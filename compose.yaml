@@ -1,0 +1,21 @@
+# Local development database.  Start with:  docker compose up -d
+# The defaults in application.yml (iou / iou / iou on localhost:5432) match this file.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: iou
+      POSTGRES_USER: iou
+      POSTGRES_PASSWORD: iou
+    ports:
+      - "5432:5432"
+    volumes:
+      - iou-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iou -d iou"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  iou-db:
