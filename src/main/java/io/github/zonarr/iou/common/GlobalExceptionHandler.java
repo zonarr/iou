@@ -24,6 +24,11 @@ public class GlobalExceptionHandler {
         return respond(e.status(), e.code(), e.getMessage(), null);
     }
 
+    @ExceptionHandler(io.github.zonarr.iou.money.MoneyException.class)
+    ResponseEntity<ApiError> money(io.github.zonarr.iou.money.MoneyException e) {
+        return respond(HttpStatus.BAD_REQUEST, e.code(), e.getMessage(), null);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     ResponseEntity<ApiError> invalid(MethodArgumentNotValidException e) {
         Map<String, String> fields = new LinkedHashMap<>();

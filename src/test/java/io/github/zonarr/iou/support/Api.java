@@ -11,7 +11,10 @@ import tools.jackson.databind.json.JsonMapper;
 /** Minimal JSON-over-HTTP client for integration tests: talks to the real running server. */
 public final class Api {
 
-    private static final JsonMapper MAPPER = JsonMapper.builder().build();
+    /** Decimals are read exactly (as BigDecimal), so tests see 300.00 and not the double 300.0. */
+    private static final JsonMapper MAPPER = JsonMapper.builder()
+            .enable(tools.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+            .build();
     private static final HttpClient HTTP = HttpClient.newHttpClient();
 
     private final String baseUrl;

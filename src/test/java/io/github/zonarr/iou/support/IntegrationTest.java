@@ -49,6 +49,27 @@ public abstract class IntegrationTest {
         return new TestUser(body.get("user").get("id").asLong(), email, password, name, token, api().as(token));
     }
 
+    /** Creates a group owned by {@code owner}; everybody else joins through the invite link. */
+    protected TestGroup createGroup(String name, TestUser owner, TestUser... others) {
+        var created = owner.api().post("/api/groups", java.util.Map.of("name", name)).expect(201);
+        String code = created.get("inviteCode").asString();
+        for (TestUser other : others) {
+            other.api().post("/api/invites/" + code + "/join").expect(200);
+        }
+        return new TestGroup(created.get("id").asLong(), code);
+    }
+
+    /** Adds a placeholder member and returns its id. */
+    protected long addPlaceholder(TestUser by, TestGroup group, String name) {
+        var detail = by.api().post(group.path() + "/members", java.util.Map.of("name", name)).expect(201);
+        for (var member : detail.get("members")) {
+            if (member.get("displayName").asString().equals(name)) {
+                return member.get("id").asLong();
+            }
+        }
+        throw new AssertionError("placeholder not found");
+    }
+
     private static final String EXTERNAL_URL = System.getenv("IOU_TEST_DB_URL");
 
     /** Started once and shared by every test class (the JVM shutdown stops it). */
