@@ -25,6 +25,18 @@ jobs:
           java-version: '21'
           cache: maven
 
+      # The wrapper downloads Maven itself on first use; retry so a network blip does not fail the build.
+      - name: Download Maven (with retries)
+        env:
+          MVNW_VERBOSE: 'true'
+        run: |
+          for attempt in 1 2 3 4; do
+            ./mvnw -B --version && exit 0
+            echo "Attempt $attempt failed; retrying in $((attempt * 15))s"
+            sleep $((attempt * 15))
+          done
+          exit 1
+
       # Unit tests, then integration tests against a real PostgreSQL 16 started by
       # Testcontainers (Docker is preinstalled on GitHub's Ubuntu runners).
       - name: Build, unit tests and integration tests
