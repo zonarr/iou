@@ -1,5 +1,8 @@
 package io.github.zonarr.iou.group;
 
+import io.github.zonarr.iou.audit.AuditAction;
+import io.github.zonarr.iou.audit.AuditEntity;
+import io.github.zonarr.iou.audit.AuditService;
 import io.github.zonarr.iou.common.ApiException;
 import io.github.zonarr.iou.group.GroupDtos.GroupDetail;
 import io.github.zonarr.iou.user.User;
@@ -22,9 +25,11 @@ public class ClaimService {
     private final GroupMemberRepository members;
     private final UserRepository users;
     private final JdbcClient jdbc;
+    private final AuditService audit;
 
     public ClaimService(GroupService groupService, GroupRepository groups, GroupMemberRepository members,
-            UserRepository users, JdbcClient jdbc) {
+            UserRepository users, JdbcClient jdbc, AuditService audit) {
+        this.audit = audit;
         this.groupService = groupService;
         this.groups = groups;
         this.members = members;
@@ -74,6 +79,9 @@ public class ClaimService {
             memberships.get(0).reassignTo(actorId);
         }
         placeholder.markMergedInto(actorId);
+        audit.record(AuditEntity.MEMBER, actorId, AuditAction.CLAIMED, groupId, actorId, java.util.List.of(),
+                GroupService.memberState(placeholder),
+                GroupService.memberState(users.findById(actorId).orElseThrow()));
         users.flush();
         members.flush();
         return groupService.detail(group);

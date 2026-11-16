@@ -1,5 +1,8 @@
 package io.github.zonarr.iou.ledger;
 
+import io.github.zonarr.iou.audit.AuditAction;
+import io.github.zonarr.iou.audit.AuditEntity;
+import io.github.zonarr.iou.audit.AuditService;
 import io.github.zonarr.iou.common.ApiException;
 import io.github.zonarr.iou.group.Group;
 import io.github.zonarr.iou.ledger.LedgerDtos.ExpenseRequest;
@@ -15,6 +18,7 @@ import io.github.zonarr.iou.user.User;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -31,9 +35,11 @@ public class ExpenseService {
     private final DebtRepository debts;
     private final LedgerAccess access;
     private final LedgerMapper mapper;
+    private final AuditService audit;
 
     public ExpenseService(ExpenseRepository expenses, ExpensePayerRepository payers, ExpenseShareRepository shares,
-            DebtRepository debts, LedgerAccess access, LedgerMapper mapper) {
+            DebtRepository debts, LedgerAccess access, LedgerMapper mapper, AuditService audit) {
+        this.audit = audit;
         this.expenses = expenses;
         this.payers = payers;
         this.shares = shares;
@@ -60,7 +66,87 @@ public class ExpenseService {
             debts.save(new Debt(groupId, expense.getId(), line.debtorId(), line.creditorId(),
                     plan.total().withAmounts(line.original(), line.thb()), expense.getDescription(), status, actorId));
         }
+        audit.record(AuditEntity.EXPENSE, expense.getId(), AuditAction.CREATED, groupId, actorId,
+                plan.people().keySet(), null, snapshot(expense));
         return mapper.expense(expense);
+    }
+
+    /**
+     * Replaces an expense with new details and re-works its debts. A debt whose people and
+     * amounts come out unchanged keeps its status; a debt whose amount changed, or that is
+     * new, goes through confirmation again as if the editor had just recorded it; a debt
+     * that is no longer needed is removed.
+     */
+    @Transactional
+    public ExpenseView update(long actorId, long expenseId, ExpenseRequest request) {
+        Expense expense = requireVisible(actorId, expenseId);
+        Group group = access.groupFor(expense.getGroupId(), actorId);
+        access.requireCanEdit(actorId, group, expense.getCreatedBy());
+        Map<String, Object> before = snapshot(expense);
+        Set<Long> involved = new HashSet<>(involved(expense));
+
+        Plan plan = plan(actorId, group, request);
+        expense.change(request.description().trim(), plan.total(), plan.breakdown().splitType(),
+                request.spentOn() != null ? request.spentOn() : expense.getSpentOn());
+        payers.deleteByExpenseId(expenseId);
+        shares.deleteByExpenseId(expenseId);
+        storeLines(expense, plan.breakdown());
+
+        Map<String, Debt> existing = new HashMap<>();
+        debts.findActiveByExpenseIds(List.of(expenseId))
+                .forEach(d -> existing.put(d.getDebtorId() + ">" + d.getCreditorId(), d));
+        for (SplitCalculator.DebtLine line : plan.breakdown().debts()) {
+            MoneyAmount money = plan.total().withAmounts(line.original(), line.thb());
+            ConfirmationStatus fresh = ConfirmationPolicy.statusFor(actorId, plan.people().get(line.debtorId()), group);
+            Debt debt = existing.remove(line.debtorId() + ">" + line.creditorId());
+            if (debt == null) {
+                debts.save(new Debt(expense.getGroupId(), expenseId, line.debtorId(), line.creditorId(), money,
+                        expense.getDescription(), fresh, actorId));
+            } else if (debt.getMoney().sameValueAs(money)) {
+                if (!debt.getDescription().equals(expense.getDescription())) {
+                    debt.setDescription(expense.getDescription());
+                }
+            } else {
+                debt.change(line.debtorId(), line.creditorId(), money, expense.getDescription());
+                debt.setStatus(fresh);
+            }
+        }
+        existing.values().forEach(Debt::markDeleted);
+        debts.flush();
+
+        involved.addAll(plan.people().keySet());
+        audit.record(AuditEntity.EXPENSE, expenseId, AuditAction.UPDATED, expense.getGroupId(), actorId,
+                involved, before, snapshot(expense));
+        return mapper.expense(expense);
+    }
+
+    /** Deletes the expense together with the debts it produced. */
+    @Transactional
+    public void delete(long actorId, long expenseId) {
+        Expense expense = requireVisible(actorId, expenseId);
+        access.requireCanEdit(actorId, access.groupFor(expense.getGroupId(), actorId), expense.getCreatedBy());
+        Map<String, Object> before = snapshot(expense);
+        Set<Long> involved = involved(expense);
+        debts.findActiveByExpenseIds(List.of(expenseId)).forEach(Debt::markDeleted);
+        expense.markDeleted();
+        audit.record(AuditEntity.EXPENSE, expenseId, AuditAction.DELETED, expense.getGroupId(), actorId,
+                involved, before, null);
+    }
+
+    private Map<String, Object> snapshot(Expense expense) {
+        debts.flush();
+        List<Long> id = List.of(expense.getId());
+        return Snapshots.of(expense, payers.findByExpenseIds(id), shares.findByExpenseIds(id),
+                debts.findActiveByExpenseIds(id));
+    }
+
+    private Set<Long> involved(Expense expense) {
+        Set<Long> ids = new HashSet<>();
+        ids.add(expense.getCreatedBy());
+        List<Long> id = List.of(expense.getId());
+        payers.findByExpenseIds(id).forEach(p -> ids.add(p.getUserId()));
+        shares.findByExpenseIds(id).forEach(s -> ids.add(s.getUserId()));
+        return ids;
     }
 
     @Transactional(readOnly = true)
@@ -82,13 +168,8 @@ public class ExpenseService {
     Expense requireVisible(long actorId, long expenseId) {
         Expense expense = expenses.findById(expenseId).filter(e -> !e.isDeleted())
                 .orElseThrow(() -> ApiException.notFound("Expense"));
-        Set<Long> involved = new HashSet<>();
-        involved.add(expense.getCreatedBy());
-        if (expense.getGroupId() == null) {
-            payers.findByExpenseIds(List.of(expenseId)).forEach(p -> involved.add(p.getUserId()));
-            shares.findByExpenseIds(List.of(expenseId)).forEach(s -> involved.add(s.getUserId()));
-        }
-        access.requireCanSee(actorId, expense.getGroupId(), involved);
+        access.requireCanSee(actorId, expense.getGroupId(),
+                expense.getGroupId() == null ? involved(expense) : Set.of());
         return expense;
     }
 

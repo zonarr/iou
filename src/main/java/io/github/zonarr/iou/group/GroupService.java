@@ -1,5 +1,8 @@
 package io.github.zonarr.iou.group;
 
+import io.github.zonarr.iou.audit.AuditAction;
+import io.github.zonarr.iou.audit.AuditEntity;
+import io.github.zonarr.iou.audit.AuditService;
 import io.github.zonarr.iou.auth.AuthService;
 import io.github.zonarr.iou.common.ApiException;
 import io.github.zonarr.iou.group.GroupDtos.GroupDetail;
@@ -9,6 +12,7 @@ import io.github.zonarr.iou.group.GroupDtos.MemberView;
 import io.github.zonarr.iou.user.User;
 import io.github.zonarr.iou.user.UserRepository;
 import java.security.SecureRandom;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -28,9 +32,11 @@ public class GroupService {
     private final GroupMemberRepository members;
     private final UserRepository users;
     private final JdbcClient jdbc;
+    private final AuditService audit;
 
     public GroupService(GroupRepository groups, GroupMemberRepository members, UserRepository users,
-            JdbcClient jdbc) {
+            JdbcClient jdbc, AuditService audit) {
+        this.audit = audit;
         this.groups = groups;
         this.members = members;
         this.users = users;
@@ -68,6 +74,8 @@ public class GroupService {
     public GroupDetail create(long actorId, String name) {
         Group group = groups.save(new Group(name.trim(), actorId, newInviteCode()));
         members.save(new GroupMember(group.getId(), actorId));
+        audit.record(AuditEntity.GROUP, group.getId(), AuditAction.CREATED, group.getId(), actorId, List.of(),
+                null, settings(group));
         return detail(group);
     }
 
@@ -90,11 +98,16 @@ public class GroupService {
     @Transactional
     public GroupDetail update(long actorId, long groupId, String name, Boolean autoConfirm) {
         Group group = requireOwner(groupId, actorId);
+        Map<String, Object> before = settings(group);
         if (name != null && !name.isBlank()) {
             group.setName(name.trim());
         }
         if (autoConfirm != null) {
             group.setAutoConfirm(autoConfirm);
+        }
+        Map<String, Object> after = settings(group);
+        if (!before.equals(after)) {
+            audit.record(AuditEntity.GROUP, groupId, AuditAction.UPDATED, groupId, actorId, List.of(), before, after);
         }
         return detail(group);
     }
@@ -103,6 +116,7 @@ public class GroupService {
     public GroupDetail resetInviteCode(long actorId, long groupId) {
         Group group = requireOwner(groupId, actorId);
         group.setInviteCode(newInviteCode());
+        audit.record(AuditEntity.GROUP, groupId, AuditAction.INVITE_RESET, groupId, actorId, List.of(), null, null);
         return detail(group);
     }
 
@@ -115,6 +129,8 @@ public class GroupService {
         requireNameFree(groupId, trimmed, null);
         User placeholder = users.save(User.placeholder(trimmed, actorId));
         members.save(new GroupMember(groupId, placeholder.getId()));
+        audit.record(AuditEntity.MEMBER, placeholder.getId(), AuditAction.ADDED, groupId, actorId,
+                List.of(placeholder.getId()), null, memberState(placeholder));
         return detail(group);
     }
 
@@ -128,6 +144,8 @@ public class GroupService {
             throw ApiException.conflict("already_member", "That person is already in the group");
         }
         members.save(new GroupMember(groupId, user.getId()));
+        audit.record(AuditEntity.MEMBER, user.getId(), AuditAction.ADDED, groupId, actorId,
+                List.of(user.getId()), null, memberState(user));
         return detail(group);
     }
 
@@ -137,7 +155,10 @@ public class GroupService {
         User user = requirePlaceholderIn(groupId, memberUserId);
         String trimmed = name.trim();
         requireNameFree(groupId, trimmed, memberUserId);
+        Map<String, Object> before = memberState(user);
         user.setDisplayName(trimmed);
+        audit.record(AuditEntity.MEMBER, memberUserId, AuditAction.RENAMED, groupId, actorId,
+                List.of(memberUserId), before, memberState(user));
         return detail(group);
     }
 
@@ -163,6 +184,9 @@ public class GroupService {
                     "This person has expenses, debts or payments in the group and cannot be removed");
         }
         members.delete(membership);
+        // The placeholder row itself may be deleted below, so the history line names nobody by id.
+        audit.record(AuditEntity.MEMBER, memberUserId, AuditAction.REMOVED, groupId, actorId,
+                user.isPlaceholder() ? List.of() : List.of(memberUserId), memberState(user), null);
         if (user.isPlaceholder()) {
             users.delete(user);
         }
@@ -199,6 +223,8 @@ public class GroupService {
         Group group = requireInvite(code);
         if (!members.existsByGroupIdAndUserId(group.getId(), actorId)) {
             members.save(new GroupMember(group.getId(), actorId));
+            audit.record(AuditEntity.MEMBER, actorId, AuditAction.JOINED, group.getId(), actorId, List.of(),
+                    null, memberState(users.findById(actorId).orElseThrow()));
         }
         return detail(group);
     }
@@ -218,6 +244,21 @@ public class GroupService {
             throw ApiException.notFound("Placeholder");
         }
         return user;
+    }
+
+    private static Map<String, Object> settings(Group group) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("name", group.getName());
+        map.put("autoConfirm", group.isAutoConfirm());
+        return map;
+    }
+
+    static Map<String, Object> memberState(User user) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("userId", user.getId());
+        map.put("name", user.getDisplayName());
+        map.put("placeholder", user.isPlaceholder());
+        return map;
     }
 
     private void requireNameFree(long groupId, String name, Long exceptUserId) {

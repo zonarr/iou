@@ -6,7 +6,9 @@ import io.github.zonarr.iou.ledger.LedgerDtos.DebtView;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -53,5 +55,29 @@ public class DebtController {
     @GetMapping("/debts/{id}")
     public DebtView get(Actor actor, @PathVariable long id) {
         return debts.get(actor.id(), id);
+    }
+
+    /** Changes a standalone IOU. Changing who or how much sends it back to pending. */
+    @PutMapping("/debts/{id}")
+    public DebtView update(Actor actor, @PathVariable long id, @Valid @RequestBody DebtRequest request) {
+        return debts.update(actor.id(), id, request);
+    }
+
+    @DeleteMapping("/debts/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(Actor actor, @PathVariable long id) {
+        debts.delete(actor.id(), id);
+    }
+
+    /** Debtor confirms a pending debt. */
+    @PostMapping("/debts/{id}/accept")
+    public DebtView accept(Actor actor, @PathVariable long id) {
+        return debts.accept(actor.id(), id);
+    }
+
+    /** Debtor rejects a pending debt. */
+    @PostMapping("/debts/{id}/reject")
+    public DebtView reject(Actor actor, @PathVariable long id) {
+        return debts.reject(actor.id(), id);
     }
 }

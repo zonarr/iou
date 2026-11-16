@@ -45,6 +45,46 @@ public final class LedgerDtos {
             List<Long> participantIds) {
     }
 
+    /**
+     * "from paid to amount". {@code groupId} is optional: leave it out for a payment outside groups.
+     */
+    public record PaymentRequest(
+            Long groupId,
+            @NotNull Long fromUserId,
+            @NotNull Long toUserId,
+            @NotNull BigDecimal amount,
+            String currency,
+            BigDecimal exchangeRate,
+            @Size(max = 200) String note) {
+    }
+
+    public record PaymentView(
+            Long id,
+            Long groupId,
+            UserSummary from,
+            UserSummary to,
+            BigDecimal originalAmount,
+            String currency,
+            BigDecimal exchangeRate,
+            BigDecimal thbAmount,
+            String note,
+            ConfirmationStatus status,
+            UserSummary createdBy,
+            Instant createdAt,
+            Instant updatedAt) {
+    }
+
+    /** Everything waiting for the logged-in person's answer. */
+    public record PendingView(List<DebtView> debts, List<PaymentView> payments) {
+    }
+
+    /** Optional filter for "accept all": only entries of this group. */
+    public record AcceptAllRequest(Long groupId) {
+    }
+
+    public record AcceptAllResult(int debtsAccepted, int paymentsConfirmed) {
+    }
+
     public record DebtView(
             Long id,
             Long groupId,

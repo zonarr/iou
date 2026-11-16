@@ -55,6 +55,15 @@ public class LedgerAccess {
         return people;
     }
 
+    /** Entries can be changed or deleted by whoever recorded them, or by the group's owner. */
+    public void requireCanEdit(long actorId, Group group, long createdBy) {
+        boolean allowed = actorId == createdBy || (group != null && group.getOwnerId() == actorId);
+        if (!allowed) {
+            throw ApiException.forbidden("not_allowed_to_edit",
+                    "Only the person who recorded this, or the group owner, can change it");
+        }
+    }
+
     /** May the actor see this entry? Group entries: members. Others: the people involved. */
     public void requireCanSee(long actorId, Long groupId, Collection<Long> involvedUserIds) {
         boolean allowed = groupId != null

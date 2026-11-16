@@ -6,7 +6,9 @@ import io.github.zonarr.iou.ledger.LedgerDtos.ExpenseView;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -53,5 +55,18 @@ public class ExpenseController {
     @GetMapping("/expenses/{id}")
     public ExpenseView get(Actor actor, @PathVariable long id) {
         return expenses.get(actor.id(), id);
+    }
+
+    /** Replaces the expense. Debts whose amount changes go back to pending. */
+    @PutMapping("/expenses/{id}")
+    public ExpenseView update(Actor actor, @PathVariable long id, @Valid @RequestBody ExpenseRequest request) {
+        return expenses.update(actor.id(), id, request);
+    }
+
+    /** Deletes the expense and the debts it produced. */
+    @DeleteMapping("/expenses/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(Actor actor, @PathVariable long id) {
+        expenses.delete(actor.id(), id);
     }
 }

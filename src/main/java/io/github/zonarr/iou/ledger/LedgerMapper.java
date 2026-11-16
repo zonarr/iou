@@ -3,6 +3,7 @@ package io.github.zonarr.iou.ledger;
 import io.github.zonarr.iou.ledger.LedgerDtos.DebtView;
 import io.github.zonarr.iou.ledger.LedgerDtos.ExpenseView;
 import io.github.zonarr.iou.ledger.LedgerDtos.PayerView;
+import io.github.zonarr.iou.ledger.LedgerDtos.PaymentView;
 import io.github.zonarr.iou.ledger.LedgerDtos.ShareView;
 import io.github.zonarr.iou.money.Money;
 import io.github.zonarr.iou.user.UserDirectory;
@@ -79,6 +80,26 @@ public class LedgerMapper {
                         .toList(),
                 debtsByExpense.getOrDefault(e.getId(), List.of()).stream().map(d -> toView(d, people)).toList(),
                 people.get(e.getCreatedBy()), e.getCreatedAt(), e.getUpdatedAt())).toList();
+    }
+
+    public PaymentView payment(Payment payment) {
+        return payments(List.of(payment)).get(0);
+    }
+
+    public List<PaymentView> payments(List<Payment> list) {
+        Set<Long> ids = new HashSet<>();
+        list.forEach(p -> {
+            ids.add(p.getFromUserId());
+            ids.add(p.getToUserId());
+            ids.add(p.getCreatedBy());
+        });
+        Map<Long, UserSummary> people = directory.summaries(ids);
+        return list.stream().map(p -> new PaymentView(p.getId(), p.getGroupId(),
+                people.get(p.getFromUserId()), people.get(p.getToUserId()),
+                p.getMoney().originalAmount(), p.getMoney().currency(),
+                Money.displayRate(p.getMoney().exchangeRate()), p.getMoney().thbAmount(),
+                p.getNote(), p.getStatus(), people.get(p.getCreatedBy()),
+                p.getCreatedAt(), p.getUpdatedAt())).toList();
     }
 
     private static void collectIds(Debt d, Set<Long> ids) {
