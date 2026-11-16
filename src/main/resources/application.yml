@@ -31,3 +31,11 @@ server:
   compression:
     enabled: true
     mime-types: text/html,text/css,application/javascript,text/javascript,application/json,image/svg+xml,application/manifest+json
+
+iou:
+  jwt:
+    # HS256 signing key, at least 32 characters. Required when the "prod" profile is active.
+    # Left empty elsewhere, a random key is generated at startup (logins end on restart).
+    secret: ${IOU_JWT_SECRET:}
+    # How long a login lasts. Long by default so family members sign in once per trip.
+    ttl: ${IOU_JWT_TTL:P60D}

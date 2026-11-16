@@ -35,6 +35,20 @@ public abstract class IntegrationTest {
         return new Api("http://localhost:" + port, null);
     }
 
+    private static final java.util.concurrent.atomic.AtomicLong COUNTER =
+            new java.util.concurrent.atomic.AtomicLong(System.nanoTime());
+
+    /** Registers a brand-new account with a unique email, so tests never collide. */
+    protected TestUser register(String name) {
+        String email = name.toLowerCase().replaceAll("[^a-z0-9]", "") + "-" + COUNTER.incrementAndGet()
+                + "@example.com";
+        String password = "correct horse battery";
+        var body = api().post("/api/auth/register",
+                java.util.Map.of("email", email, "password", password, "displayName", name)).expect(201);
+        String token = body.get("token").asString();
+        return new TestUser(body.get("user").get("id").asLong(), email, password, name, token, api().as(token));
+    }
+
     private static final String EXTERNAL_URL = System.getenv("IOU_TEST_DB_URL");
 
     /** Started once and shared by every test class (the JVM shutdown stops it). */
