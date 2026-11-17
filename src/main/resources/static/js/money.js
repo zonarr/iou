@@ -74,3 +74,16 @@ export function sum(texts) {
   const digits = total.toString().padStart(3, '0');
   return `${digits.slice(0, -2)}.${digits.slice(-2)}`;
 }
+
+/** "12.34" -> 1234n (null if it is not a number with at most `scale` decimals). */
+export function scaled(text, scale = 2) {
+  return toScaled(text, scale);
+}
+
+/** 1234n -> "12.34". Works for negative values too. */
+export function unscaled(value, scale = 2) {
+  const negative = value < 0n;
+  const digits = (negative ? -value : value).toString().padStart(scale + 1, '0');
+  const text = `${digits.slice(0, -scale)}.${digits.slice(-scale)}`;
+  return negative ? `-${text}` : text;
+}

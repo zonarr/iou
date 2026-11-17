@@ -183,6 +183,37 @@ try {
   await dad.getByText('฿1,200.00').waitFor();
   check(true, 'expense edited');
 
+  // ---------------- custom split and two payers
+  await dad.getByRole('button', { name: /Add expense/ }).click();
+  await dad.getByLabel('What was it for?').fill('Ski passes');
+  await dad.getByLabel('Amount').fill('300');
+  await dad.getByRole('button', { name: 'More than one person paid' }).click();
+  await dad.getByRole('checkbox', { name: /Mother/ }).first().click();
+  await dad.locator('.value-row', { hasText: 'Dad' }).first().locator('input').fill('200');
+  await dad.getByText('฿100.00 of the total not yet assigned to a payer').waitFor();
+  await dad.locator('.value-row', { hasText: 'Mother' }).first().locator('input').fill('100');
+  await dad.getByText('Payers add up to the total').waitFor();
+  await dad.getByRole('radio', { name: 'Shares' }).click();
+  await dad.locator('.value-row', { hasText: 'Grandma' }).locator('input').fill('2');
+  await shot(dad, 'custom-split');
+  await dad.getByRole('button', { name: 'Save' }).click();
+  await dad.getByRole('heading', { name: 'Ski passes' }).click();
+  // 300 by shares Dad 1 : Grandma 2 : Mother 1 = 75 / 150 / 75.
+  check(await dad.getByText('2 people paid').isVisible(), 'two payers are shown');
+  check(await dad.locator('.details').getByText('฿150.00').isVisible(), 'Grandma has a double share');
+  await dad.getByRole('button', { name: 'Edit' }).click();
+  check(await dad.getByRole('radio', { name: 'Shares' }).getAttribute('aria-checked') === 'true', 'edit form remembers the split type');
+  check((await dad.locator('.value-row', { hasText: 'Grandma' }).locator('input').inputValue()) === '2', 'edit form remembers the shares');
+  await dad.getByRole('radio', { name: 'Percent' }).click();
+  await dad.locator('.value-rows').last().locator('input').nth(0).fill('50');
+  await dad.locator('.value-rows').last().locator('input').nth(1).fill('30');
+  await dad.getByText('20% left').waitFor();
+  await dad.locator('.value-rows').last().locator('input').nth(2).fill('20');
+  await dad.getByText('Adds up to 100%').waitFor();
+  await dad.getByRole('button', { name: 'Save' }).click();
+  await dad.getByRole('heading', { name: 'Ski passes' }).waitFor();
+  check(true, 'custom split edited to percentages');
+
   // ---------------- one-on-one, outside the group
   await dad.goto(`${base}/#/direct`);
   await dad.getByRole('button', { name: /Add/ }).click();

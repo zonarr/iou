@@ -175,15 +175,34 @@ public class ExpenseService {
 
     private Plan plan(long actorId, Group group, ExpenseRequest request) {
         MoneyAmount total = Money.convert(request.amount(), request.currency(), request.exchangeRate());
-        if (request.payerId() == null) {
-            throw ApiException.badRequest("payers_required", "Say who paid");
+        boolean severalPayers = request.payers() != null && !request.payers().isEmpty();
+        if (severalPayers && request.payerId() != null) {
+            throw ApiException.badRequest("payers_conflict", "Give either payerId or payers, not both");
         }
-        List<Payer> payerList = List.of(new Payer(request.payerId(), total.originalAmount()));
+        List<Payer> payerList = new ArrayList<>();
+        if (severalPayers) {
+            request.payers().forEach(p -> payerList.add(new Payer(p.userId(), p.amount())));
+        } else if (request.payerId() != null) {
+            payerList.add(new Payer(request.payerId(), total.originalAmount()));
+        }
+
+        SplitType splitType = request.splitType() == null ? SplitType.EQUAL : request.splitType();
         List<Participant> participantList = new ArrayList<>();
-        if (request.participantIds() != null) {
+        boolean hasShares = request.shares() != null && !request.shares().isEmpty();
+        boolean hasIds = request.participantIds() != null && !request.participantIds().isEmpty();
+        if (hasShares && hasIds) {
+            throw ApiException.badRequest("participants_conflict", "Give either participantIds or shares, not both");
+        }
+        if (hasShares) {
+            request.shares().forEach(s -> participantList.add(new Participant(s.userId(), s.value())));
+        } else if (hasIds) {
+            if (splitType != SplitType.EQUAL) {
+                throw ApiException.badRequest("split_value_required",
+                        "This kind of split needs a value for every person: use shares instead of participantIds");
+            }
             request.participantIds().forEach(id -> participantList.add(new Participant(requireId(id), null)));
         }
-        Breakdown breakdown = SplitCalculator.calculate(total, SplitType.EQUAL, payerList, participantList);
+        Breakdown breakdown = SplitCalculator.calculate(total, splitType, payerList, participantList);
 
         Set<Long> everyone = new HashSet<>();
         breakdown.payers().forEach(p -> everyone.add(p.userId()));

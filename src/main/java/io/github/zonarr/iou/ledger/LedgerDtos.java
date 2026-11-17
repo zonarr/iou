@@ -2,6 +2,7 @@ package io.github.zonarr.iou.ledger;
 
 import io.github.zonarr.iou.money.SplitType;
 import io.github.zonarr.iou.user.UserSummary;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -30,8 +31,29 @@ public final class LedgerDtos {
             @NotBlank @Size(max = 200) String description) {
     }
 
+    /** One of several people who paid, and how much (in the expense's currency). */
+    public record PayerInput(@NotNull Long userId, @NotNull BigDecimal amount) {
+    }
+
     /**
-     * An expense split equally: {@code payerId} paid {@code amount} for {@code participantIds}.
+     * One person the expense was for.
+     *
+     * @param value EXACT: their amount; PERCENT: their percentage; SHARES: their share count;
+     *              EQUAL: leave out
+     */
+    public record ShareInput(@NotNull Long userId, BigDecimal value) {
+    }
+
+    /**
+     * An expense: who paid, and who it was for.
+     *
+     * <p><b>Who paid</b> - give either {@code payerId} (one person paid everything) or
+     * {@code payers} (several people, whose amounts must add up to {@code amount}).
+     *
+     * <p><b>Who it was for</b> - {@code splitType} defaults to EQUAL. For an equal split give
+     * {@code participantIds}. For EXACT, PERCENT and SHARES give {@code shares} with a value
+     * per person: amounts that add up to the total, percentages that add up to 100, or
+     * relative share counts.
      *
      * @param spentOn the day it was paid; today if left out
      */
@@ -42,7 +64,10 @@ public final class LedgerDtos {
             BigDecimal exchangeRate,
             LocalDate spentOn,
             Long payerId,
-            List<Long> participantIds) {
+            @Valid List<PayerInput> payers,
+            SplitType splitType,
+            List<Long> participantIds,
+            @Valid List<ShareInput> shares) {
     }
 
     /**

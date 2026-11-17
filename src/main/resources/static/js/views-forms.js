@@ -1,7 +1,7 @@
 // The three entry forms: expense, simple IOU, payment. Used inside a group and one-on-one.
 import { html, useState, useEffect, useLoad, useStore } from './lib.js';
 import { t } from './i18n.js';
-import { fmt, fromThb, validAmount, validRate, BASE } from './money.js';
+import { fmt, fromThb, validAmount, validRate, cleanNumber, scaled, unscaled, BASE } from './money.js';
 import { get, post, put, session } from './api.js';
 import { back } from './router.js';
 import { Page, Loaded, Button, Field, Section, TextInput, Chips, MoneyFields, ErrorBox,
@@ -70,30 +70,123 @@ export function ExpenseForm({ groupId, expenseId, query }) {
     <//>`;
 }
 
+const SPLIT_TYPES = ['EQUAL', 'EXACT', 'PERCENT', 'SHARES'];
+
+/** One line per person with a number box: used for payer amounts and for custom splits. */
+function ValueRows({ people, values, onChange, unit, placeholder }) {
+  return html`
+    <div class="value-rows">
+      ${people.map((p) => html`
+        <label class="value-row" key=${p.id}>
+          <span>${p.displayName}</span>
+          <input class="input" inputmode="decimal" autocomplete="off" placeholder=${placeholder}
+                 value=${values[p.id] ?? ''} onInput=${(e) => onChange({ ...values, [p.id]: e.target.value })} />
+          <span class="unit">${unit}</span>
+        </label>`)}
+    </div>`;
+}
+
+/** "x left / x too much / adds up" under a list of amounts that must reach the total. */
+function TotalCheck({ total, parts, currency, left, over, ok }) {
+  const target = scaled(total);
+  if (target === null) return null;
+  let sum = 0n;
+  for (const part of parts) sum += scaled(part) ?? 0n;
+  const difference = target - sum;
+  if (difference === 0n) return html`<p class="check ok">✓ ${t(ok)}</p>`;
+  return html`<p class="check bad">${t(difference > 0n ? left : over,
+    { amount: fmt(unscaled(difference > 0n ? difference : -difference), currency) })}</p>`;
+}
+
+function PercentCheck({ parts }) {
+  let sum = 0n;
+  for (const part of parts) sum += scaled(part, 4) ?? 0n;
+  const difference = 1000000n - sum; // 100 at scale 4
+  if (difference === 0n) return html`<p class="check ok">✓ ${t('split.percentOk')}</p>`;
+  const n = unscaled(difference > 0n ? difference : -difference, 4).replace(/\.?0+$/, '');
+  return html`<p class="check bad">${t(difference > 0n ? 'split.percentLeft' : 'split.percentOver', { n })}</p>`;
+}
+
 function ExpenseFields({ ctx, me, query, backTo }) {
   const { group, members, rates, existing } = ctx;
+  const everyone = members.map((m) => m.id);
   const [description, setDescription] = useState(existing?.description || '');
   const [money, setMoney] = useState(existing ? moneyFrom(existing) : emptyMoney());
-  const [payerId, setPayerId] = useState(existing ? existing.payers[0].user.id : Number(query.payer) || me.id);
-  const [participantIds, setParticipantIds] = useState(
-    existing ? existing.shares.map((s) => s.user.id) : members.map((m) => m.id));
   const [spentOn, setSpentOn] = useState(existing?.spentOn || localDay(new Date().toISOString()));
+
+  // who paid
+  const [multiPayer, setMultiPayer] = useState(existing ? existing.payers.length > 1 : false);
+  const [payerId, setPayerId] = useState(existing ? existing.payers[0].user.id : Number(query.payer) || me.id);
+  const [payerIds, setPayerIds] = useState(existing ? existing.payers.map((p) => p.user.id) : [me.id]);
+  const [payerAmounts, setPayerAmounts] = useState(existing
+    ? Object.fromEntries(existing.payers.map((p) => [p.user.id, Number(p.originalAmount).toFixed(2)])) : {});
+
+  // who it was for, and how it is divided
+  const [participantIds, setParticipantIds] = useState(existing ? existing.shares.map((s) => s.user.id) : everyone);
+  const [splitType, setSplitType] = useState(existing?.splitType || 'EQUAL');
+  const [values, setValues] = useState(existing && existing.splitType !== 'EQUAL'
+    ? Object.fromEntries(existing.shares.map((s) => [s.user.id,
+      existing.splitType === 'EXACT' ? Number(s.originalAmount).toFixed(2) : String(s.weight)])) : {});
+
   const options = memberOptions(members, me);
+  const byId = (ids) => members.filter((m) => ids.includes(m.id));
+  const changeSplitType = (type) => {
+    setSplitType(type);
+    setValues(type === 'SHARES' ? Object.fromEntries(everyone.map((id) => [id, '1'])) : {});
+  };
+  const changeParticipants = (ids) => {
+    setParticipantIds(ids);
+    if (splitType === 'SHARES') {
+      setValues(Object.fromEntries(ids.map((id) => [id, values[id] || '1'])));
+    }
+  };
 
   const { busy, error, submit } = useSubmit(() => {
     if (!description.trim()) fail('description_required');
     const problem = moneyProblem(money);
     if (problem) fail(problem);
+    const total = scaled(cleanNumber(money.amount));
+    const body = { description: description.trim(), ...moneyBody(money), spentOn };
+
+    if (multiPayer) {
+      if (!payerIds.length) fail('payers_required');
+      let paid = 0n;
+      for (const id of payerIds) {
+        if (!validAmount(payerAmounts[id])) fail('payers_mismatch');
+        paid += scaled(cleanNumber(payerAmounts[id]));
+      }
+      if (paid !== total) fail('payers_mismatch');
+      body.payers = payerIds.map((id) => ({ userId: id, amount: cleanNumber(payerAmounts[id]) }));
+    } else {
+      body.payerId = payerId;
+    }
+
     if (!participantIds.length) fail('participants_required');
-    const body = { description: description.trim(), ...moneyBody(money), spentOn, payerId, participantIds };
+    if (splitType === 'EQUAL') {
+      body.participantIds = participantIds;
+    } else {
+      const numbers = participantIds.map((id) => cleanNumber(values[id]));
+      if (numbers.some((n) => !n || Number(n) <= 0)) fail('split_value_required');
+      if (splitType === 'EXACT') {
+        if (numbers.some((n) => scaled(n) === null)) fail('amount_too_precise');
+        if (numbers.reduce((sum, n) => sum + scaled(n), 0n) !== total) fail('split_mismatch');
+      } else if (numbers.some((n) => scaled(n, 4) === null)) {
+        fail('split_value_invalid');
+      } else if (splitType === 'PERCENT' && numbers.reduce((sum, n) => sum + scaled(n, 4), 0n) !== 1000000n) {
+        fail('percent_mismatch');
+      }
+      body.splitType = splitType;
+      body.shares = participantIds.map((id, i) => ({ userId: id, value: numbers[i] }));
+    }
     return () => (existing
       ? put(`/api/expenses/${existing.id}`, body)
       : post(group ? `/api/groups/${group.id}/expenses` : '/api/expenses', body));
   }, backTo);
 
-  const each = validAmount(money.amount) && participantIds.length
-    ? fmt(Number(money.amount.replace(',', '.')) / participantIds.length, money.currency) : null;
+  const each = splitType === 'EQUAL' && validAmount(money.amount) && participantIds.length
+    ? fmt(Number(cleanNumber(money.amount)) / participantIds.length, money.currency) : null;
   const othersMustAccept = !group?.autoConfirm;
+  const unit = { EXACT: money.currency, PERCENT: '%', SHARES: '×' }[splitType];
 
   return html`
     <form class="form" onSubmit=${submit}>
@@ -102,15 +195,44 @@ function ExpenseFields({ ctx, me, query, backTo }) {
                       placeholder=${t('form.descriptionHint')} autofocus=${!existing} />
       <//>
       <${MoneyFields} value=${money} onChange=${setMoney} rates=${rates} />
-      <${Section} label=${t('form.paidBy')}>
-        <${Chips} options=${options} value=${payerId} onChange=${setPayerId} />
+
+      <${Section} label=${t('form.paidBy')}
+        action=${html`<button type="button" class="link" onClick=${() => setMultiPayer(!multiPayer)}>
+          ${multiPayer ? t('split.singlePayer') : t('split.multiPayer')}</button>`}>
+        ${multiPayer ? html`
+          <${Chips} multi options=${options} value=${payerIds} onChange=${setPayerIds} />
+          <${ValueRows} people=${byId(payerIds)} values=${payerAmounts} onChange=${setPayerAmounts}
+                        unit=${money.currency} placeholder="0.00" />
+          <${TotalCheck} total=${cleanNumber(money.amount)} currency=${money.currency}
+                         parts=${payerIds.map((id) => cleanNumber(payerAmounts[id]))}
+                         left="split.payersLeft" over="split.payersOver" ok="split.payersOk" />`
+        : html`<${Chips} options=${options} value=${payerId} onChange=${setPayerId} />`}
       <//>
+
       <${Section} label=${t('form.splitBetween')} hint=${each ? t('form.eachPays', { amount: each }) : null}
         action=${html`<button type="button" class="link" onClick=${() =>
-          setParticipantIds(participantIds.length === members.length ? [] : members.map((m) => m.id))}>
+          changeParticipants(participantIds.length === members.length ? [] : everyone)}>
           ${participantIds.length === members.length ? t('form.nobody') : t('form.everyone')}</button>`}>
-        <${Chips} multi options=${options} value=${participantIds} onChange=${setParticipantIds} />
+        <${Chips} multi options=${options} value=${participantIds} onChange=${changeParticipants} />
       <//>
+
+      <${Section} label=${t('split.title')} hint=${splitType === 'SHARES' ? t('split.sharesHint') : null}>
+        <div class="tabs" role="radiogroup" aria-label=${t('split.title')}>
+          ${SPLIT_TYPES.map((type) => html`
+            <button type="button" key=${type} role="radio" aria-checked=${splitType === type}
+                    class=${splitType === type ? 'on' : ''} onClick=${() => changeSplitType(type)}>${t(`split.${type}`)}</button>`)}
+        </div>
+        ${splitType !== 'EQUAL' ? html`
+          <${ValueRows} people=${byId(participantIds)} values=${values} onChange=${setValues} unit=${unit}
+                        placeholder=${splitType === 'SHARES' ? '1' : '0'} />
+          ${splitType === 'EXACT' ? html`
+            <${TotalCheck} total=${cleanNumber(money.amount)} currency=${money.currency}
+                           parts=${participantIds.map((id) => cleanNumber(values[id]))}
+                           left="split.left" over="split.over" ok="split.exactOk" />` : null}
+          ${splitType === 'PERCENT' ? html`
+            <${PercentCheck} parts=${participantIds.map((id) => cleanNumber(values[id]))} />` : null}` : null}
+      <//>
+
       <${Field} label=${t('form.date')}>
         <input class="input" type="date" value=${spentOn} onInput=${(e) => setSpentOn(e.target.value)} />
       <//>

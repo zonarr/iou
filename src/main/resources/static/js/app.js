@@ -93,7 +93,9 @@ function App() {
     <${Toasts} />`;
 }
 
-render(html`<${App} />`, document.getElementById('app'));
+const root = document.getElementById('app');
+root.textContent = ''; // remove the loading placeholder; render() would otherwise leave it underneath
+render(html`<${App} />`, root);
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('/sw.js').catch(() => { /* the app works without it */ });

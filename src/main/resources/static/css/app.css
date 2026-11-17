@@ -160,6 +160,16 @@ select.input { appearance: none; }
 }
 .chip.on .tick { border-color: transparent; background: rgba(255, 255, 255, .25); }
 
+.value-rows { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.value-row { display: flex; align-items: center; gap: 10px; }
+.value-row > span:first-child { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.value-row .input { width: 132px; flex: none; min-height: 50px; text-align: right; font-variant-numeric: tabular-nums; }
+.value-row .unit { width: 40px; flex: none; color: var(--muted); font-size: 15px; }
+.check { font-size: 15px; font-weight: 600; }
+.check.ok { color: var(--pos); }
+.check.bad { color: var(--warn); }
+.field .tabs button { font-size: 14.5px; }
+
 .switch { display: flex; gap: 14px; align-items: flex-start; }
 .switch input { width: 28px; height: 28px; flex: none; margin: 2px 0 0; accent-color: var(--primary); }
 .switch-text { display: flex; flex-direction: column; gap: 4px; }
