@@ -24,6 +24,13 @@ spring:
           time_zone: UTC
   flyway:
     enabled: true
+  web:
+    resources:
+      cache:
+        cachecontrol:
+          # Browsers may keep the app's files but must check for a newer version each time,
+          # so a new deploy reaches phones on the next open.
+          no-cache: true
 
 server:
   port: ${PORT:8080}

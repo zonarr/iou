@@ -41,12 +41,22 @@ public class SecurityConfig {
 
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
 
+    private static final String CONTENT_SECURITY_POLICY = "default-src 'self'; "
+            + "style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; "
+            + "frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, JsonMapper json) throws Exception {
         http
                 // Stateless API with bearer tokens: no cookies, so no CSRF surface and no sessions.
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // The web app loads only its own files: no third-party scripts, no framing.
+                .headers(headers -> headers
+                        .contentSecurityPolicy(csp -> csp.policyDirectives(CONTENT_SECURITY_POLICY))
+                        .referrerPolicy(referrer -> referrer.policy(
+                                org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter
+                                        .ReferrerPolicy.SAME_ORIGIN)))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**", "/api/health/**").permitAll()
                         .requestMatchers("/api/**").authenticated()
