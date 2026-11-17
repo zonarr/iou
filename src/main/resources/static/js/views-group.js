@@ -6,8 +6,9 @@ import { get, post, patch, del, session } from './api.js';
 import { go, replace, query } from './router.js';
 import { Page, Loaded, Button, Field, TextInput, ErrorBox, toast } from './ui.js';
 import { Feed } from './feed.js';
+import { GroupActivity } from './views-activity.js';
 
-const TABS = ['feed', 'balances', 'people'];
+const TABS = ['feed', 'balances', 'people', 'history'];
 
 export function Group({ id, tab = 'feed' }) {
   const { user } = useStore(session);
@@ -23,6 +24,7 @@ export function Group({ id, tab = 'feed' }) {
       <${Loaded} load=${load}>${(group) =>
         tab === 'balances' ? html`<${BalancesTab} group=${group} me=${user} />`
         : tab === 'people' ? html`<${PeopleTab} group=${group} me=${user} onChanged=${load.reload} />`
+        : tab === 'history' ? html`<${GroupActivity} groupId=${group.id} />`
         : html`<${FeedTab} group=${group} me=${user} />`}<//>
     <//>`;
 }

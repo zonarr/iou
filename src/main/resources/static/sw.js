@@ -1,11 +1,11 @@
 // Service worker: keeps a copy of the app's own files so it opens instantly, even while
 // the server is still waking up. API calls are never cached: money data is always live.
-const CACHE = 'iou-shell-v1';
+const CACHE = 'iou-shell-v2';
 const SHELL = [
   '/', '/css/app.css', '/manifest.webmanifest', '/icons/icon.svg',
   '/js/app.js', '/js/lib.js', '/js/api.js', '/js/i18n.js', '/js/money.js', '/js/router.js', '/js/ui.js',
   '/js/feed.js', '/js/views-auth.js', '/js/views-home.js', '/js/views-group.js', '/js/views-forms.js',
-  '/js/views-direct.js', '/js/vendor/preact-htm.js',
+  '/js/views-direct.js', '/js/views-activity.js', '/js/vendor/preact-htm.js',
 ];
 
 self.addEventListener('install', (event) => {

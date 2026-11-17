@@ -236,6 +236,20 @@ try {
   await dad.getByRole('heading', { name: 'Airport taxi' }).waitFor();
   check(true, 'one-on-one split recorded');
 
+  // ---------------- history
+  await dad.goto(`${base}/#/`);
+  await dad.getByRole('button', { name: /Europe 2026/ }).click();
+  await dad.getByRole('tab', { name: 'History' }).click();
+  await dad.getByText('Dad added expense “Dinner in Paris”').waitFor();
+  check(await dad.getByText('€100.00 (฿3,850.00)').isVisible(), 'history shows the original and THB amounts');
+  check(await dad.getByText('Mother is “Mum”').isVisible(), 'history shows Mum claiming her placeholder');
+  check(await dad.getByText(/was ฿900\.00/).isVisible(), 'history shows what an edited expense used to be');
+  check(await dad.getByText('Trusted group switched on').isVisible(), 'history shows the settings change');
+  await shot(dad, 'history');
+  await dad.goto(`${base}/#/activity`);
+  await dad.getByText('Dad added: Mother owes Dad').waitFor();
+  check(true, 'my history includes one-on-one entries');
+
   // ---------------- Thai
   await dad.goto(`${base}/#/me`);
   await dad.getByRole('button', { name: 'ไทย' }).click();

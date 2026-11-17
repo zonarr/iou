@@ -9,6 +9,7 @@ import { Home, Pending, Me, Join } from './views-home.js';
 import { Group } from './views-group.js';
 import { ExpenseForm, IouForm, PaymentForm } from './views-forms.js';
 import { Direct, DirectNew } from './views-direct.js';
+import { Activity } from './views-activity.js';
 
 function WakeBanner() {
   const { waking } = useStore(network);
@@ -18,6 +19,7 @@ function WakeBanner() {
 function TabBar({ current }) {
   const tabs = [
     { path: '/', label: t('nav.home'), icon: '⌂' },
+    { path: '/activity', label: t('nav.activity'), icon: '↺' },
     { path: '/me', label: t('nav.me'), icon: '☺' },
   ];
   return html`
@@ -35,6 +37,7 @@ function screenFor({ parts, query }) {
   const id = (value) => (/^\d+$/.test(value || '') ? Number(value) : null);
   if (!a) return [html`<${Home} />`, true];
   if (a === 'me') return [html`<${Me} />`, true];
+  if (a === 'activity') return [html`<${Activity} />`, true];
   if (a === 'pending') return [html`<${Pending} />`];
   if (a === 'join' && b) return [html`<${Join} code=${b} />`];
   if (a === 'g' && id(b)) {
@@ -97,6 +100,6 @@ const root = document.getElementById('app');
 root.textContent = ''; // remove the loading placeholder; render() would otherwise leave it underneath
 render(html`<${App} />`, root);
 
-if ('serviceWorker' in navigator && location.protocol === 'https:') {
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   navigator.serviceWorker.register('/sw.js').catch(() => { /* the app works without it */ });
 }

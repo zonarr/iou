@@ -28,6 +28,12 @@ for (const prefix of prefixes) {
   if (![...en].some((key) => key.startsWith(prefix))) problems.push(`no keys start with: ${prefix}`);
 }
 
+// The service worker lists the app's files by hand; make sure none was forgotten.
+const worker = readFileSync(new URL('../sw.js', dir), 'utf8');
+for (const file of readdirSync(dir).filter((f) => f.endsWith('.js'))) {
+  if (!worker.includes(`'/js/${file}'`)) problems.push(`sw.js does not cache /js/${file}`);
+}
+
 if (problems.length) {
   console.error(problems.join('\n'));
   process.exit(1);
