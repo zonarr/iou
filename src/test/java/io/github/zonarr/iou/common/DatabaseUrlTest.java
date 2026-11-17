@@ -12,8 +12,9 @@ class DatabaseUrlTest {
         DatabaseUrl url = DatabaseUrl.parse(
                 "postgresql://neondb_owner:s3cr%40t@ep-cool-1234.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require");
 
+        // channel_binding is libpq's spelling; the Java driver calls it channelBinding.
         assertThat(url.jdbcUrl()).isEqualTo(
-                "jdbc:postgresql://ep-cool-1234.eu-central-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require");
+                "jdbc:postgresql://ep-cool-1234.eu-central-1.aws.neon.tech/neondb?sslmode=require&channelBinding=require");
         assertThat(url.username()).isEqualTo("neondb_owner");
         assertThat(url.password()).isEqualTo("s3cr@t");
     }
@@ -25,6 +26,15 @@ class DatabaseUrlTest {
         assertThat(url.jdbcUrl()).isEqualTo("jdbc:postgresql://localhost:5433/iou");
         assertThat(url.username()).isEqualTo("iou");
         assertThat(url.password()).isEqualTo("iou");
+    }
+
+    @Test
+    void translatesOtherLibpqParameterNamesAndKeepsUnknownOnes() {
+        DatabaseUrl url = DatabaseUrl.parse(
+                "postgresql://u:p@db.example.com/app?application_name=iou&connect_timeout=10&options=-c%20x%3D1&sslmode=require");
+
+        assertThat(url.jdbcUrl()).isEqualTo(
+                "jdbc:postgresql://db.example.com/app?ApplicationName=iou&connectTimeout=10&options=-c%20x%3D1&sslmode=require");
     }
 
     @Test

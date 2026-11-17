@@ -44,9 +44,36 @@ public record DatabaseUrl(String jdbcUrl, String username, String password) {
         }
         jdbc.append(uri.getRawPath() == null || uri.getRawPath().isEmpty() ? "/" : uri.getRawPath());
         if (uri.getRawQuery() != null && !uri.getRawQuery().isEmpty()) {
-            jdbc.append('?').append(uri.getRawQuery());
+            jdbc.append('?').append(translateParameters(uri.getRawQuery()));
         }
         return new DatabaseUrl(jdbc.toString(), username, password);
+    }
+
+    /**
+     * The URL comes in libpq spelling (what psql uses); the Java driver spells a few
+     * parameters differently, e.g. Neon's {@code channel_binding=require}.
+     */
+    private static String translateParameters(String query) {
+        StringBuilder out = new StringBuilder();
+        for (String pair : query.split("&")) {
+            if (pair.isEmpty()) {
+                continue;
+            }
+            int equals = pair.indexOf('=');
+            String name = equals < 0 ? pair : pair.substring(0, equals);
+            String rest = equals < 0 ? "" : pair.substring(equals);
+            String jdbcName = switch (name) {
+                case "channel_binding" -> "channelBinding";
+                case "application_name" -> "ApplicationName";
+                case "connect_timeout" -> "connectTimeout";
+                default -> name;
+            };
+            if (out.length() > 0) {
+                out.append('&');
+            }
+            out.append(jdbcName).append(rest);
+        }
+        return out.toString();
     }
 
     public void applyAsSystemProperties() {

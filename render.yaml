@@ -1,0 +1,26 @@
+# Render Blueprint: describes the one web service this app needs.
+# In Render: New + -> Blueprint -> pick this repository. See DEPLOY.md for every step.
+services:
+  - type: web
+    name: iou
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    # Frankfurt: close to the trip, and the same region as the Neon database (see DEPLOY.md).
+    region: frankfurt
+    healthCheckPath: /api/health
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      # Signs the login tokens. Render generates a random value once and keeps it.
+      - key: IOU_JWT_SECRET
+        generateValue: true
+      # How long a login lasts (ISO-8601 duration). 60 days covers the whole trip.
+      - key: IOU_JWT_TTL
+        value: P60D
+      # Change to "false" in the Render dashboard once the whole family has signed up.
+      - key: IOU_REGISTRATION_OPEN
+        value: "true"
+      # The Neon connection string. Pasted by hand in the Render dashboard, never committed.
+      - key: DATABASE_URL
+        sync: false

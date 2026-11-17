@@ -20,8 +20,11 @@ public class AuthService {
     private final JwtService jwt;
     /** Compared against when the email is unknown, so both cases take the same time. */
     private final String dummyHash;
+    private final boolean registrationOpen;
 
-    public AuthService(UserRepository users, PasswordEncoder passwordEncoder, JwtService jwt) {
+    public AuthService(UserRepository users, PasswordEncoder passwordEncoder, JwtService jwt,
+            @org.springframework.beans.factory.annotation.Value("${iou.registration-open:true}") boolean registrationOpen) {
+        this.registrationOpen = registrationOpen;
         this.users = users;
         this.passwordEncoder = passwordEncoder;
         this.jwt = jwt;
@@ -30,6 +33,9 @@ public class AuthService {
 
     @Transactional
     public AuthResponse register(String email, String password, String displayName) {
+        if (!registrationOpen) {
+            throw ApiException.forbidden("registration_closed", "New accounts are not being accepted");
+        }
         requireUsablePassword(password);
         String normalized = normalizeEmail(email);
         if (users.existsByEmail(normalized)) {

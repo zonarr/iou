@@ -53,3 +53,50 @@ jobs:
           path: |
             target/surefire-reports
             target/failsafe-reports
+
+  docker:
+    name: Docker image starts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: iou
+          POSTGRES_USER: iou
+          POSTGRES_PASSWORD: iou
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U iou -d iou"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the production image
+        run: docker build -t iou .
+
+      # Same limits as Render's free plan, so a start that needs more memory fails here first.
+      - name: Start it like Render does
+        run: |
+          docker run -d --name iou --network host --memory 512m --cpus 1 \
+            -e PORT=8080 \
+            -e DATABASE_URL=postgresql://iou:iou@localhost:5432/iou \
+            -e IOU_JWT_SECRET=ci-only-secret-not-for-production-0123456789 \
+            iou
+
+      - name: Wait for it, then use it
+        run: |
+          for attempt in $(seq 1 60); do
+            curl -fsS http://localhost:8080/api/health && break
+            sleep 2
+          done
+          curl -fsS http://localhost:8080/api/health/db
+          curl -fsS http://localhost:8080/ | grep -q '<title>iou</title>'
+          curl -fsS -H 'Content-Type: application/json' \
+            -d '{"email":"ci@example.com","password":"correct horse battery","displayName":"CI"}' \
+            http://localhost:8080/api/auth/register | grep -q '"token"'
+
+      - name: Show the container log
+        if: always()
+        run: docker logs iou
