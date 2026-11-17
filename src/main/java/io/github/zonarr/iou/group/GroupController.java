@@ -1,5 +1,7 @@
 package io.github.zonarr.iou.group;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import io.github.zonarr.iou.auth.Actor;
 import io.github.zonarr.iou.common.ApiException;
 import io.github.zonarr.iou.group.GroupDtos.AddMemberRequest;
@@ -24,6 +26,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+@Tag(name = "Groups", description = "Groups, members, placeholders and invite links")
 @RestController
 @RequestMapping("/api")
 public class GroupController {
@@ -36,34 +39,40 @@ public class GroupController {
         this.claims = claims;
     }
 
+    @Operation(summary = "Create a group")
     @PostMapping("/groups")
     @ResponseStatus(HttpStatus.CREATED)
     public GroupDetail create(Actor actor, @Valid @RequestBody CreateGroupRequest request) {
         return groups.create(actor.id(), request.name());
     }
 
+    @Operation(summary = "My groups")
     @GetMapping("/groups")
     public List<GroupSummary> list(Actor actor) {
         return groups.listFor(actor.id());
     }
 
+    @Operation(summary = "One group with its members and invite code")
     @GetMapping("/groups/{id}")
     public GroupDetail get(Actor actor, @PathVariable long id) {
         return groups.get(actor.id(), id);
     }
 
     /** Owner only: rename the group or switch "trusted group" (auto-confirm) on or off. */
+    @Operation(summary = "Rename the group or switch trusted mode (owner only)")
     @PatchMapping("/groups/{id}")
     public GroupDetail update(Actor actor, @PathVariable long id, @Valid @RequestBody UpdateGroupRequest request) {
         return groups.update(actor.id(), id, request.name(), request.autoConfirm());
     }
 
     /** Owner only: makes the old invite link stop working and returns a new one. */
+    @Operation(summary = "Replace the invite link (owner only)")
     @PostMapping("/groups/{id}/invite/reset")
     public GroupDetail resetInvite(Actor actor, @PathVariable long id) {
         return groups.resetInviteCode(actor.id(), id);
     }
 
+    @Operation(summary = "Add a member: a placeholder by name, or a registered user by email")
     @PostMapping("/groups/{id}/members")
     @ResponseStatus(HttpStatus.CREATED)
     public GroupDetail addMember(Actor actor, @PathVariable long id, @Valid @RequestBody AddMemberRequest request) {
@@ -79,6 +88,7 @@ public class GroupController {
     }
 
     /** Renames a placeholder member. */
+    @Operation(summary = "Rename a placeholder member")
     @PatchMapping("/groups/{id}/members/{userId}")
     public GroupDetail renameMember(Actor actor, @PathVariable long id, @PathVariable long userId,
             @Valid @RequestBody RenameMemberRequest request) {
@@ -86,17 +96,20 @@ public class GroupController {
     }
 
     /** Removes a member who has no expenses, debts or payments in the group. */
+    @Operation(summary = "Remove a member who has no history in the group (or leave the group)")
     @DeleteMapping("/groups/{id}/members/{userId}")
     public GroupDetail removeMember(Actor actor, @PathVariable long id, @PathVariable long userId) {
         return groups.removeMember(actor.id(), id, userId);
     }
 
+    @Operation(summary = "What an invite link leads to, and which placeholders can be claimed")
     @GetMapping("/invites/{code}")
     public InvitePreview previewInvite(Actor actor, @PathVariable String code) {
         return groups.previewInvite(actor.id(), code);
     }
 
     /** Joins the group behind an invite link, optionally taking over a placeholder. */
+    @Operation(summary = "Join through an invite link, optionally claiming a placeholder")
     @PostMapping("/invites/{code}/join")
     public GroupDetail join(Actor actor, @PathVariable String code, @RequestBody(required = false) JoinRequest request) {
         if (request != null && request.placeholderId() != null) {
@@ -107,6 +120,7 @@ public class GroupController {
     }
 
     /** Links a placeholder to the caller's account; its whole history moves over. */
+    @Operation(summary = "Link a placeholder to my account; its debt history moves over")
     @PostMapping("/placeholders/{id}/claim")
     public GroupDetail claim(Actor actor, @PathVariable long id, @RequestBody(required = false) ClaimRequest request) {
         return claims.claim(actor.id(), id, request == null ? null : request.inviteCode());

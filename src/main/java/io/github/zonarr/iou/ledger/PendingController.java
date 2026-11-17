@@ -1,5 +1,7 @@
 package io.github.zonarr.iou.ledger;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import io.github.zonarr.iou.auth.Actor;
 import io.github.zonarr.iou.ledger.LedgerDtos.AcceptAllRequest;
 import io.github.zonarr.iou.ledger.LedgerDtos.AcceptAllResult;
@@ -13,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /** The logged-in person's inbox: debts to accept and payments to confirm. */
+@Tag(name = "Pending", description = "What is waiting for my answer")
 @RestController
 @RequestMapping("/api/me/pending")
 public class PendingController {
@@ -32,6 +35,7 @@ public class PendingController {
         this.mapper = mapper;
     }
 
+    @Operation(summary = "Debts for me to accept and payments for me to confirm")
     @GetMapping
     @Transactional(readOnly = true)
     public PendingView pending(Actor actor) {
@@ -40,6 +44,7 @@ public class PendingController {
     }
 
     /** Accepts every debt and confirms every payment waiting for me (optionally only one group's). */
+    @Operation(summary = "Accept and confirm everything waiting for me (optionally one group only)")
     @PostMapping("/accept-all")
     @Transactional
     public AcceptAllResult acceptAll(Actor actor, @RequestBody(required = false) AcceptAllRequest request) {

@@ -1,5 +1,7 @@
 package io.github.zonarr.iou.ledger;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import io.github.zonarr.iou.auth.Actor;
 import io.github.zonarr.iou.auth.AuthService;
 import io.github.zonarr.iou.common.ApiException;
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /** Small lookups the forms need: currencies, remembered rates, finding a person by email. */
+@Tag(name = "Reference", description = "Currencies, remembered exchange rates, finding people")
 @RestController
 @RequestMapping("/api")
 public class ReferenceController {
@@ -43,6 +46,7 @@ public class ReferenceController {
     public record Currencies(String base, List<String> featured, List<CurrencyInfo> all) {
     }
 
+    @Operation(summary = "Supported currencies (any ISO 4217 code) and the featured ones")
     @GetMapping("/currencies")
     public Currencies currencies() {
         List<CurrencyInfo> all = Currency.getAvailableCurrencies().stream()
@@ -54,6 +58,7 @@ public class ReferenceController {
     }
 
     /** The last exchange rate used in the group for each currency, to pre-fill the form. */
+    @Operation(summary = "Last exchange rate used per currency in a group")
     @GetMapping("/groups/{groupId}/rates")
     public Map<String, BigDecimal> groupRates(Actor actor, @PathVariable long groupId) {
         groups.requireMember(groupId, actor.id());
@@ -61,12 +66,14 @@ public class ReferenceController {
     }
 
     /** The last exchange rate I entered for each currency (for entries outside groups). */
+    @Operation(summary = "Last exchange rate I entered per currency")
     @GetMapping("/me/rates")
     public Map<String, BigDecimal> myRates(Actor actor) {
         return rates.lastUsedBy(actor.id());
     }
 
     /** Finds a registered person by their exact email, to record a one-on-one debt with them. */
+    @Operation(summary = "Find a registered person by exact email")
     @GetMapping("/users/lookup")
     public UserSummary lookup(@RequestParam String email) {
         return users.findByEmail(AuthService.normalizeEmail(email))

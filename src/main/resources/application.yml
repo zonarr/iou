@@ -48,3 +48,12 @@ iou:
     secret: ${IOU_JWT_SECRET:}
     # How long a login lasts. Long by default so family members sign in once per trip.
     ttl: ${IOU_JWT_TTL:P60D}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    # Group the endpoints the way the README lists them, and keep the token across reloads.
+    tags-sorter: alpha
+    operations-sorter: alpha
+    persist-authorization: true
+    try-it-out-enabled: true
