@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # The wrapper downloads Maven itself on first use; retry so a network blip does not fail the build.
+      - name: Download Maven (with retries)
+        env:
+          MVNW_VERBOSE: 'true'
+        run: |
+          for attempt in 1 2 3 4; do
+            ./mvnw -B --version && exit 0
+            echo "Attempt $attempt failed; retrying in $((attempt * 15))s"
+            sleep $((attempt * 15))
+          done
+          exit 1
+
+      # Unit tests, then integration tests against a real PostgreSQL 16 started by
+      # Testcontainers (Docker is preinstalled on GitHub's Ubuntu runners).
+      - name: Build, unit tests and integration tests
+        run: ./mvnw -B verify
+
+      - name: Check translations (English and Thai have the same keys)
+        run: node e2e/check-i18n.mjs
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            target/surefire-reports
+            target/failsafe-reports
+
+  docker:
+    name: Docker image starts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: iou
+          POSTGRES_USER: iou
+          POSTGRES_PASSWORD: iou
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U iou -d iou"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the production image
+        run: docker build -t iou .
+
+      # Same limits as Render's free plan, so a start that needs more memory fails here first.
+      - name: Start it like Render does
+        run: |
+          docker run -d --name iou --network host --memory 512m --cpus 1 \
+            -e PORT=8080 \
+            -e DATABASE_URL=postgresql://iou:iou@localhost:5432/iou \
+            -e IOU_JWT_SECRET=ci-only-secret-not-for-production-0123456789 \
+            iou
+
+      - name: Wait for it, then use it
+        run: |
+          for attempt in $(seq 1 60); do
+            curl -fsS http://localhost:8080/api/health && break
+            sleep 2
+          done
+          curl -fsS http://localhost:8080/api/health/db
+          curl -fsS http://localhost:8080/ | grep -q '<title>iou</title>'
+          curl -fsS -H 'Content-Type: application/json' \
+            -d '{"email":"ci@example.com","password":"correct horse battery","displayName":"CI"}' \
+            http://localhost:8080/api/auth/register | grep -q '"token"'
+
+      - name: Show the container log
+        if: always()
+        run: docker logs iou

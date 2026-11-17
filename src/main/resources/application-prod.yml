@@ -1,0 +1,23 @@
+# Production settings (SPRING_PROFILES_ACTIVE=prod). Tuned for a small, sleepy host:
+# Render's free web service (0.1 CPU, 512 MB) with Neon's serverless PostgreSQL.
+spring:
+  jpa:
+    hibernate:
+      # Flyway owns the schema and the test suite checks the mappings against it, so skip
+      # Hibernate's own validation: fewer database round trips on every cold start.
+      ddl-auto: none
+  main:
+    banner-mode: off
+
+server:
+  # Render terminates HTTPS in front of the app; trust its X-Forwarded-* headers.
+  forward-headers-strategy: framework
+  tomcat:
+    threads:
+      max: 20
+
+logging:
+  level:
+    root: INFO
+    org.flywaydb: WARN
+    org.hibernate.orm: WARN

@@ -1,0 +1,10 @@
+.git
+.github
+.idea
+.vscode
+target
+e2e
+node_modules
+*.md
+compose.yaml
+render.yaml

@@ -1,0 +1,39 @@
+# Local development.
+#
+#   docker compose up -d                       just PostgreSQL, for ./mvnw spring-boot:run
+#   docker compose --profile app up --build    PostgreSQL + the app in its production image,
+#                                              at http://localhost:8080
+#
+# The defaults in application.yml (iou / iou / iou on localhost:5432) match this file.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: iou
+      POSTGRES_USER: iou
+      POSTGRES_PASSWORD: iou
+    ports:
+      - "5432:5432"
+    volumes:
+      - iou-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iou -d iou"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    profiles: ["app"]
+    build: .
+    environment:
+      DATABASE_URL: postgresql://iou:iou@db:5432/iou
+      # Local use only. Production gets its own generated secret (see render.yaml).
+      IOU_JWT_SECRET: local-only-secret-not-for-production-0123456789
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  iou-db:
